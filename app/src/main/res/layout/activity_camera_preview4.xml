@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="8dp">
+
+    <!-- ========================= -->
+    <!-- ROW: Kamera 1 & Kamera 2 -->
+    <!-- ========================= -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <!-- SLOT 1 -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <com.serenegiant.widget.AspectRatioTextureView
+                android:id="@+id/textureCam1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:keepScreenOn="true" />
+
+            <!-- Hasil Capture Kamera 1 -->
+            <ImageView
+                android:id="@+id/capturedCam1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- SLOT 2 -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <com.serenegiant.widget.AspectRatioTextureView
+                android:id="@+id/textureCam2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:keepScreenOn="true" />
+
+            <!-- Hasil Capture Kamera 2 -->
+            <ImageView
+                android:id="@+id/capturedCam2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- ========================= -->
+    <!-- ROW: Kamera 3 -->
+    <!-- ========================= -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="6dp">
+
+        <com.serenegiant.widget.AspectRatioTextureView
+            android:id="@+id/textureCam3"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:keepScreenOn="true" />
+
+        <!-- Hasil Capture Kamera 3 -->
+        <ImageView
+            android:id="@+id/capturedCam3"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- ========================= -->
+    <!-- Tombol Capture Semua -->
+    <!-- ========================= -->
+    <Button
+        android:id="@+id/captureBtn"
+        android:text="Capture Semua Kamera"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp"
+        android:backgroundTint="#2196F3"
+        android:textColor="#FFFFFF"
+        android:layout_marginTop="10dp"/>
+</LinearLayout>

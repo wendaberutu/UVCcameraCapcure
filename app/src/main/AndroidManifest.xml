@@ -3,16 +3,15 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Fitur perangkat -->
-    <uses-feature android:name="android.hardware.usb.host" />
-    <uses-feature
-        android:name="android.hardware.camera"
-        android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="true" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
-    <!-- Izin yang digunakan -->
+    <!-- Izin umum -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"
@@ -25,14 +24,23 @@
         android:theme="@style/Theme.Research1"
         tools:targetApi="33">
 
+        <!-- Activity kamera -->
         <activity
             android:name=".CameraPreviewActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize"
             android:hardwareAccelerated="true"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
 
+            <!-- Biar kamera USB otomatis terdeteksi -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+
+        </activity>
+
+        <!-- Activity utama -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -43,4 +51,5 @@
         </activity>
 
     </application>
+
 </manifest>

@@ -1,16 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="8dp">
 
-    <!-- 2 kamera atas -->
+    <!-- Tiga TextureView berdampingan -->
     <LinearLayout
+        android:orientation="horizontal"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="horizontal">
+        android:layout_weight="1">
 
         <com.serenegiant.widget.AspectRatioTextureView
             android:id="@+id/textureCam1"
@@ -25,25 +24,28 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:keepScreenOn="true" />
+
+        <com.serenegiant.widget.AspectRatioTextureView
+            android:id="@+id/textureCam3"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:keepScreenOn="true" />
     </LinearLayout>
 
-    <!-- kamera ketiga -->
-    <com.serenegiant.widget.AspectRatioTextureView
-        android:id="@+id/textureCam3"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="6dp"
-        android:keepScreenOn="true" />
-
-    <!-- Tombol Capture -->
     <Button
-        android:id="@+id/captureBtn"
-        android:text="Capture Semua Kamera"
+        android:id="@+id/switchBtn"
+        android:text="Ganti Kamera"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="12dp"
+        android:backgroundTint="#FF9800"
+        android:textColor="#FFFFFF" />
+
+    <Button
+        android:id="@+id/captureBtn"
+        android:text="Capture"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:backgroundTint="#2196F3"
-        android:textColor="#FFFFFF"
-        android:layout_marginTop="10dp"/>
+        android:textColor="#FFFFFF" />
 </LinearLayout>

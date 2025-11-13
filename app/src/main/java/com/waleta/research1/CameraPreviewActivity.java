@@ -6,10 +6,7 @@ import android.hardware.usb.UsbDevice;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.TextureView;
-import android.view.View;
 import android.widget.Button;
-import android.widget.ImageView;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -20,205 +17,201 @@ import com.serenegiant.usb.UVCCamera;
 import com.serenegiant.usb.UVCParam;
 import com.serenegiant.widget.AspectRatioTextureView;
 
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 
 public class CameraPreviewActivity extends AppCompatActivity {
-    private static final String TAG = "CameraPreview";
 
-    private AspectRatioTextureView previewView;
-    private ImageView capturedImage;
-    private Button captureBtn;
-    private TextView infoText;
+    private static final String TAG = "CameraQueue";
+
+    private AspectRatioTextureView[] textureViews = new AspectRatioTextureView[3];
 
     private USBMonitor usbMonitor;
-    private UVCCamera camera;
-    private UsbDevice currentDevice;
 
-    private int previewWidth = 640;
-    private int previewHeight = 480;
+    private UVCCamera activeCamera = null;
+    private UsbDevice activeDevice = null;
+
+    private Queue<UsbDevice> queue = new LinkedList<>();
+
+    private boolean isOpening = false;
+
+    private Button captureBtn;
+
+    private int previewWidth = 320;
+    private int previewHeight = 240;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_camera_preview);
 
-        previewView = findViewById(R.id.textureView);
-        capturedImage = findViewById(R.id.capturedImage);
-        captureBtn = findViewById(R.id.capture);
-        infoText = findViewById(R.id.infoText);
+        textureViews[0] = findViewById(R.id.textureCam1);
+        textureViews[1] = findViewById(R.id.textureCam2);
+        textureViews[2] = findViewById(R.id.textureCam3);
+
+        captureBtn = findViewById(R.id.captureBtn);
+        captureBtn.setOnClickListener(v -> captureAndNext());
 
         initUSBMonitor();
-        initPreviewView();
 
-        captureBtn.setOnClickListener(v -> captureImage());
+        for (AspectRatioTextureView tv : textureViews) initPreviewView(tv);
     }
 
-    private void captureImage() {
-        if (camera == null || previewView == null) return;
-        try {
-            Bitmap bitmap = previewView.getBitmap();
-            if (bitmap != null) {
-                releaseCamera();
-                previewView.setVisibility(View.GONE);
-                capturedImage.setImageBitmap(bitmap);
-                capturedImage.setVisibility(View.VISIBLE);
-                infoText.setVisibility(View.GONE);
-                captureBtn.setVisibility(View.GONE);
-                Log.d(TAG, "✅ Gambar berhasil di-capture dan kamera dimatikan");
-            } else {
-                Log.e(TAG, "❌ Gagal mengambil frame (bitmap null)");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Error saat capture: " + e.getMessage());
-        }
-    }
-
-    private void initUSBMonitor() {
-        usbMonitor = new USBMonitor(this, new USBMonitor.OnDeviceConnectListener() {
-            @Override
-            public void onAttach(UsbDevice device) {
-                Log.d(TAG, "USB device terdeteksi: " + device.getDeviceName());
-                if (usbMonitor != null) usbMonitor.requestPermission(device);
-            }
-
-            @Override
-            public void onDeviceOpen(UsbDevice device, USBMonitor.UsbControlBlock ctrlBlock, boolean createNew) {
-                Log.d(TAG, "Kamera USB dibuka");
-                currentDevice = device;
-                openCamera(ctrlBlock);
-            }
-
-            @Override
-            public void onDeviceClose(UsbDevice device, USBMonitor.UsbControlBlock ctrlBlock) {
-                Log.d(TAG, "Kamera ditutup: " + device.getDeviceName());
-                releaseCamera();
-            }
-
-            @Override
-            public void onDetach(UsbDevice device) {
-                Log.d(TAG, "USB dilepas: " + device.getDeviceName());
-                releaseCamera();
-            }
-
-            @Override public void onCancel(UsbDevice device) {}
-            @Override public void onError(UsbDevice device, USBMonitor.USBException e) {
-                Log.e(TAG, "Error kamera: " + e.getMessage());
-            }
-        });
-    }
-
-    private void initPreviewView() {
-        previewView.setAspectRatio(previewWidth, previewHeight);
-        previewView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
-            @Override
-            public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
-                Log.d(TAG, "SurfaceTexture siap: " + width + "x" + height);
-                if (camera != null) {
-                    camera.setPreviewTexture(surface);
-                    camera.startPreview();
-                }
-            }
-
+    private void initPreviewView(AspectRatioTextureView tv) {
+        tv.setAspectRatio(previewWidth, previewHeight);
+        tv.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            @Override public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int w, int h) {}
             @Override public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture s, int w, int h) {}
-            @Override public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture s) {
-                if (camera != null) {
-                    try { camera.stopPreview(); } catch (Exception ignored) {}
-                }
-                return false;
-            }
+            @Override public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture s) { return false; }
             @Override public void onSurfaceTextureUpdated(@NonNull SurfaceTexture s) {}
         });
     }
 
-    private void openCamera(USBMonitor.UsbControlBlock ctrlBlock) {
-        releaseCamera();
-        runOnUiThread(() -> {
-            try {
-                camera = new UVCCamera(new UVCParam());
-                camera.open(ctrlBlock);
+    // ================================================================
+    // USB MONITOR FIX — queue berjalan via permission → onDeviceOpen()
+    // ================================================================
+    private void initUSBMonitor() {
 
-                List<Size> sizes = camera.getSupportedSizeList();
-                if (sizes == null || sizes.isEmpty()) {
-                    Log.e(TAG, "❌ Tidak ada resolusi didukung");
-                    return;
-                }
+        usbMonitor = new USBMonitor(this, new USBMonitor.OnDeviceConnectListener() {
 
-                Size chosen = pickPreferredSize(sizes);
-                if (chosen == null) chosen = sizes.get(0);
-
-                camera.setPreviewSize(chosen.width, chosen.height, chosen.type, chosen.fps);
-
-                previewWidth = chosen.width;
-                previewHeight = chosen.height;
-
-                previewView.setAspectRatio(previewWidth, previewHeight);
-                if (previewView.isAvailable() && previewView.getSurfaceTexture() != null) {
-                    camera.setPreviewTexture(previewView.getSurfaceTexture());
-                    camera.startPreview();
-                    previewView.setVisibility(View.VISIBLE);
-                    Log.d(TAG, "✅ Preview dimulai di " + previewWidth + "x" + previewHeight);
-                } else {
-                    Log.d(TAG, "Menunggu SurfaceTexture siap...");
-                }
-
-            } catch (Exception e) {
-                Log.e(TAG, "❌ Gagal membuka kamera: " + e.getMessage(), e);
+            @Override
+            public void onAttach(UsbDevice device) {
+                Log.d(TAG, "Detected → enqueue " + device.getDeviceName());
+                queue.add(device);
+                tryProcessQueue();
             }
+
+            @Override
+            public void onDeviceOpen(UsbDevice device, USBMonitor.UsbControlBlock ctrlBlock, boolean newCreate) {
+                Log.d(TAG, "Permission granted → opening " + device.getDeviceName());
+                openCameraReal(device, ctrlBlock);
+            }
+
+            @Override public void onDeviceClose(UsbDevice device, USBMonitor.UsbControlBlock ctrlBlock) {}
+            @Override public void onDetach(UsbDevice device) {}
+            @Override public void onCancel(UsbDevice device) {}
+            @Override public void onError(UsbDevice device, USBMonitor.USBException e) {}
         });
     }
 
-    private Size pickPreferredSize(List<Size> sizes) {
+    // ================================================================
+    // Queue handler — satu kamera sekaligus
+    // ================================================================
+    private void tryProcessQueue() {
+        if (isOpening) return;
+        if (activeCamera != null) return;
+        if (queue.isEmpty()) return;
+
+        UsbDevice dev = queue.poll();
+        activeDevice = dev;
+        isOpening = true;
+
+        usbMonitor.requestPermission(dev);
+    }
+
+    // ================================================================
+    // Open camera hanya melalui ctrlBlock (legal dari library UVC)
+    // ================================================================
+    private void openCameraReal(UsbDevice device, USBMonitor.UsbControlBlock ctrl) {
+        try {
+            int slot = UsbCameraMap.getIndexForDevice(this, device);
+            if (slot == -1) {
+                slot = getFreeSlot(device);
+            }
+
+            UVCCamera cam = new UVCCamera(new UVCParam());
+            cam.open(ctrl);
+
+            List<Size> sizes = cam.getSupportedSizeList();
+            Size chosen = pickPreferred(sizes);
+
+            cam.setPreviewSize(chosen.width, chosen.height, chosen.type, chosen.fps);
+
+            AspectRatioTextureView tv = textureViews[slot];
+            tv.setAspectRatio(chosen.width, chosen.height);
+            cam.setPreviewTexture(tv.getSurfaceTexture());
+
+            cam.startPreview();
+
+            activeCamera = cam;
+
+            Log.d(TAG, "Camera opened in slot " + slot);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Open error: " + e.getMessage(), e);
+        }
+
+        isOpening = false;
+    }
+
+    private int getFreeSlot(UsbDevice dev) {
+        for (int i = 0; i < 3; i++) {
+            boolean used = false;
+            for (UsbDevice d : queue) {
+                if (UsbCameraMap.getIndexForDevice(this, d) == i) {
+                    used = true; break;
+                }
+            }
+            if (!used) {
+                UsbCameraMap.saveIndexForDevice(this, dev, i);
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private Size pickPreferred(List<Size> sizes) {
         for (Size s : sizes)
-            if (s.type == 5 && s.width == 1280 && s.height == 720) return s;
-        for (Size s : sizes)
-            if (s.type == 7 && s.width == 1280 && s.height == 720) return s;
+            if (s.width == 1280 && s.height == 720) return s;
         return sizes.get(0);
     }
 
-    private void releaseCamera() {
-        if (camera != null) {
-            try {
-                camera.stopPreview();
-                camera.destroy();
-            } catch (Exception ignored) {}
-            camera = null;
+    // ================================================================
+    // Capture satu kamera → lanjut buka kamera berikutnya
+    // ================================================================
+    private void captureAndNext() {
+        if (activeCamera == null) {
+            Log.d(TAG, "No camera active.");
+            return;
         }
+
+        int slot = UsbCameraMap.getIndexForDevice(this, activeDevice);
+        Bitmap bmp = textureViews[slot].getBitmap();
+
+        if (bmp != null) {
+            Log.d(TAG, "Captured slot " + slot + ": " + bmp.getWidth() + "x" + bmp.getHeight());
+        }
+
+        closeActiveCamera();
+        tryProcessQueue();
     }
 
-    @Override
-    protected void onStart() {
+    private void closeActiveCamera() {
+        if (activeCamera != null) {
+            try {
+                activeCamera.stopPreview();
+                activeCamera.destroy();
+            } catch (Exception ignored) {}
+        }
+        activeCamera = null;
+        activeDevice = null;
+    }
+
+    // ================================================================
+    @Override protected void onStart() {
         super.onStart();
-        if (usbMonitor != null) usbMonitor.register();
+        usbMonitor.register();
     }
 
-    @Override
-    protected void onStop() {
-        if (usbMonitor != null) usbMonitor.unregister();
-        releaseCamera();
+    @Override protected void onStop() {
+        usbMonitor.unregister();
+        closeActiveCamera();
         super.onStop();
     }
 
-    @Override
-    protected void onDestroy() {
-        releaseCamera();
-        if (usbMonitor != null) {
-            usbMonitor.destroy();
-            usbMonitor = null;
-        }
+    @Override protected void onDestroy() {
+        usbMonitor.destroy();
         super.onDestroy();
-    }
-
-    private static class Mode {
-        final int width;
-        final int height;
-        final int format;
-        final float fps;
-
-        Mode(int w, int h, int fmt, float f) {
-            width = w;
-            height = h;
-            format = fmt;
-            fps = f;
-        }
     }
 }
