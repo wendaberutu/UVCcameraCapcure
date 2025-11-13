@@ -151,7 +151,7 @@ public class CameraPreviewActivity extends AppCompatActivity {
             for (UsbDevice d : queue) {
                 if (UsbCameraMap.getIndexForDevice(this, d) == i) {
                     used = true; break;
-                }
+                };
             }
             if (!used) {
                 UsbCameraMap.saveIndexForDevice(this, dev, i);
@@ -163,7 +163,7 @@ public class CameraPreviewActivity extends AppCompatActivity {
 
     private Size pickPreferred(List<Size> sizes) {
         for (Size s : sizes)
-            if (s.width == 1280 && s.height == 720) return s;
+            if (s.width == 320 && s.height == 240) return s;
         return sizes.get(0);
     }
 
