@@ -19,8 +19,10 @@ import com.serenegiant.usb.UVCCamera;
 import com.serenegiant.usb.UVCParam;
 import com.serenegiant.widget.AspectRatioTextureView;
 
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 
 public class CameraPreviewActivity extends AppCompatActivity {
@@ -31,7 +33,6 @@ public class CameraPreviewActivity extends AppCompatActivity {
     private Surface[] surfaces = new Surface[3];
 
     private USBMonitor usbMonitor;
-
     private UVCCamera activeCamera = null;
     private UsbDevice activeDevice = null;
 
@@ -45,7 +46,8 @@ public class CameraPreviewActivity extends AppCompatActivity {
 
     private Bitmap[] imageResult = new Bitmap[3];
 
-    private int nextSlot = 0;
+    // Mapping USB port → slot
+    private Map<String, Integer> portToSlot = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,17 +70,16 @@ public class CameraPreviewActivity extends AppCompatActivity {
         tv.setAspectRatio(preferredW, preferredH);
 
         tv.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
-            @Override
-            public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int w, int h) {
-                Log.w(TAG, "SurfaceTexture AVAILABLE slot " + slot);
-            }
+            @Override public void onSurfaceTextureAvailable(@NonNull SurfaceTexture s, int w, int h) {}
             @Override public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture s, int w, int h) {}
             @Override public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture s) { return false; }
             @Override public void onSurfaceTextureUpdated(@NonNull SurfaceTexture s) {}
         });
     }
 
+    // ======================================================
     // USB MONITOR
+    // ======================================================
     private void initUSBMonitor() {
         usbMonitor = new USBMonitor(this, new USBMonitor.OnDeviceConnectListener() {
 
@@ -96,9 +97,7 @@ public class CameraPreviewActivity extends AppCompatActivity {
             @Override public void onDeviceClose(UsbDevice device, USBMonitor.UsbControlBlock ctrlBlock) {}
             @Override public void onDetach(UsbDevice device) {}
             @Override public void onCancel(UsbDevice device) {}
-            @Override public void onError(UsbDevice device, USBMonitor.USBException e) {
-                Log.e(TAG, "USB ERROR: " + e.getMessage());
-            }
+            @Override public void onError(UsbDevice device, USBMonitor.USBException e) {}
         });
     }
 
@@ -114,9 +113,32 @@ public class CameraPreviewActivity extends AppCompatActivity {
         usbMonitor.requestPermission(dev);
     }
 
+    // ======================================================
+    // BACA USB PORT (device path)
+    // ======================================================
+    private String getDeviceKey(UsbDevice dev) {
+        return dev.getDeviceName(); // contoh: /dev/bus/usb/001/004
+    }
+
+    private int getSlotForDevice(UsbDevice dev) {
+        String key = getDeviceKey(dev);
+
+        if (!portToSlot.containsKey(key)) {
+            int assigned = portToSlot.size();
+            if (assigned > 2) assigned = 2;
+            portToSlot.put(key, assigned);
+        }
+
+        return portToSlot.get(key);
+    }
+
+    // ======================================================
+    // OPEN CAMERA FOR FIXED SLOT (PORT-BASED)
+    // ======================================================
     private void openCameraReal(UsbDevice device, USBMonitor.UsbControlBlock ctrl) {
         try {
-            int slot = nextSlot;
+            int slot = getSlotForDevice(device);
+            Log.w(TAG, "Camera matched to SLOT " + slot + " via USB PORT");
 
             if (imageResult[slot] != null) {
                 isOpening = false;
@@ -129,12 +151,8 @@ public class CameraPreviewActivity extends AppCompatActivity {
 
             List<Size> sizes = cam.getSupportedSizeList();
             Size chosen = sizes.get(0);
-            for (Size s : sizes) {
-                if (s.width == preferredW && s.height == preferredH) {
-                    chosen = s;
-                    break;
-                }
-            }
+            for (Size s : sizes)
+                if (s.width == preferredW && s.height == preferredH) chosen = s;
 
             cam.setPreviewSize(chosen.width, chosen.height, chosen.type, chosen.fps);
             startPreviewSafe(cam, textureViews[slot], slot);
@@ -149,77 +167,66 @@ public class CameraPreviewActivity extends AppCompatActivity {
     }
 
     private void startPreviewSafe(UVCCamera cam, AspectRatioTextureView tv, int slot) {
+
         tv.postDelayed(() -> {
             try {
                 SurfaceTexture tex = tv.getSurfaceTexture();
-                if (tex == null) {
-                    startPreviewSafe(cam, tv, slot);
-                    return;
-                }
 
-                if (surfaces[slot] != null)
-                    surfaces[slot].release();
+                if (surfaces[slot] != null) surfaces[slot].release();
 
                 surfaces[slot] = new Surface(tex);
 
-                cam.setPreviewDisplay((Surface) surfaces[slot]);
+                cam.setPreviewDisplay(surfaces[slot]);
                 cam.startPreview();
 
             } catch (Exception e) {
                 Log.e(TAG, "PREVIEW ERROR: " + e.getMessage());
             }
-        }, 300);
+        }, 200);
     }
 
+    // ======================================================
+    // CAPTURE → SHOW → FIXED SLOT
+    // ======================================================
     private void captureAndNext() {
         if (activeCamera == null) return;
 
-        int slot = nextSlot;
-
-        // Ambil bitmap dari preview camera
+        int slot = getSlotForDevice(activeDevice);
         Bitmap bmp = textureViews[slot].getBitmap();
 
         if (bmp != null) {
             imageResult[slot] = bmp;
 
-            // 1. Stop kamera & lepas Surface kamera
+            // Hentikan preview
             try {
                 activeCamera.stopPreview();
                 activeCamera.setPreviewDisplay((Surface) null);
             } catch (Exception ignored) {}
 
-            // 2. Lepas Surface lama agar tidak menimpa screenshot
+            // Lepas Surface lama
             if (surfaces[slot] != null) {
                 surfaces[slot].release();
                 surfaces[slot] = null;
             }
 
-            // 3. Ganti SurfaceTexture untuk TextureView → WAJIB
-            SurfaceTexture newTex = new SurfaceTexture(0);
-            textureViews[slot].setSurfaceTexture(newTex);
+            // Ganti SurfaceTexture baru (WAJIB untuk menghindari hitam)
+            SurfaceTexture tex = new SurfaceTexture(0);
+            textureViews[slot].setSurfaceTexture(tex);
 
-            // 4. Gambar screenshot ke TextureView (tidak akan hitam)
+            // Gambar screenshot
             showScreenshot(slot, bmp);
         }
 
-        // Lanjut ke slot berikutnya
-        nextSlot++;
-        if (nextSlot >= 3) nextSlot = 0;
-
-        // Tutup kamera dan lanjutkan antrian kamera selanjutnya
         closeActiveCamera();
         tryProcessQueue();
     }
 
-
+    // ======================================================
+    // DRAW SCREENSHOT (AMAN)
+    // ======================================================
     private void showScreenshot(int slot, Bitmap bmp) {
         AspectRatioTextureView tv = textureViews[slot];
 
-        // 1. Replace SurfaceTexture
-        SurfaceTexture newTex = new SurfaceTexture(0);
-        tv.setSurfaceTexture(newTex);
-
-        // 2. Draw bitmap aman (tdk ditimpa preview)
         tv.postDelayed(() -> {
             try {
                 Canvas canvas = tv.lockCanvas();
@@ -230,7 +237,7 @@ public class CameraPreviewActivity extends AppCompatActivity {
             } catch (Exception e) {
                 Log.e(TAG, "DRAW ERROR: " + e.getMessage());
             }
-        }, 50);
+        }, 60);
     }
 
     private void closeActiveCamera() {
@@ -248,8 +255,7 @@ public class CameraPreviewActivity extends AppCompatActivity {
     @Override protected void onStop() { usbMonitor.unregister(); closeActiveCamera(); super.onStop(); }
     @Override protected void onDestroy() {
         usbMonitor.destroy();
-        for (int i = 0; i < 3; i++)
-            if (surfaces[i] != null) surfaces[i].release();
+        for (int i=0;i<3;i++) if (surfaces[i] != null) surfaces[i].release();
         super.onDestroy();
     }
 }
